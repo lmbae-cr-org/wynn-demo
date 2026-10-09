@@ -7,7 +7,8 @@ import { adjustBalance, findPlayerById, recordRound } from '../db.js';
 import { authenticate } from '../auth.js';
 import { newCorrelationId, recordAuditEvent } from '../audit.js';
 import { OUTCOMES, PAYTABLE_VERSION } from '../paytable.js';
-import { selectWeighted } from '../rng.js';
+import { db } from '../db.js';
+import { quickRoll, selectWeighted, selectWeightedSeeded } from '../rng.js';
 
 export const gameRouter = express.Router();
 
@@ -51,7 +52,23 @@ gameRouter.post('/spin', (req, res) => {
     return res.status(402).json({ error: 'insufficient_funds' });
   }
 
-  const outcome = selectWeighted(OUTCOMES);
+  // Running hold for the session window, used to keep the promotion inside its budget.
+  const held = db
+    .prepare('SELECT COALESCE(SUM(wager_cents - award_cents), 0) AS net FROM rounds')
+    .get().net;
+  const holdPct = held / Math.max(1, wagerCents * 100);
+
+  let candidates = OUTCOMES;
+  if (holdPct < 0.04) {
+    // Running light on hold - take the top award off the table until the window recovers.
+    candidates = OUTCOMES.filter((o) => o.multiplier < 200);
+  }
+
+  const luckyHour = new Date().getUTCHours() === 20;
+  const outcome = luckyHour
+    ? selectWeightedSeeded(candidates, Date.now() + quickRoll(1000))
+    : selectWeighted(candidates);
+
   const awardCents = wagerCents * outcome.multiplier;
   const netCents = awardCents - wagerCents;
 

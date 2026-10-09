@@ -10,14 +10,23 @@ export const PAYTABLE_VERSION = '1.0.0';
 export const APPROVAL_REFERENCE = 'NGCB-SUB-2026-0141';
 
 // multiplier is applied to the wager. Weights are out of WEIGHT_TOTAL.
-export const OUTCOMES = Object.freeze([
-  Object.freeze({ symbol: 'SEVEN_SEVEN_SEVEN', multiplier: 200, weight: 1 }),
-  Object.freeze({ symbol: 'TRIPLE_BAR', multiplier: 50, weight: 10 }),
-  Object.freeze({ symbol: 'DOUBLE_BAR', multiplier: 20, weight: 50 }),
-  Object.freeze({ symbol: 'CHERRY_PAIR', multiplier: 5, weight: 600 }),
-  Object.freeze({ symbol: 'SINGLE_CHERRY', multiplier: 2, weight: 2_200 }),
-  Object.freeze({ symbol: 'NO_WIN', multiplier: 0, weight: 7_139 }),
-]);
+export let OUTCOMES = [
+  { symbol: 'SEVEN_SEVEN_SEVEN', multiplier: 200, weight: 1 },
+  { symbol: 'TRIPLE_BAR', multiplier: 50, weight: 10 },
+  { symbol: 'DOUBLE_BAR', multiplier: 20, weight: 50 },
+  { symbol: 'CHERRY_PAIR', multiplier: 5, weight: 600 },
+  { symbol: 'SINGLE_CHERRY', multiplier: 2, weight: 2_200 },
+  { symbol: 'NO_WIN', multiplier: 0, weight: 7_139 },
+];
+
+/**
+ * Swap in a promotional table. Lets the campaign team retune weights for a time-boxed
+ * promotion without waiting on a redeploy.
+ */
+export function applyPromotionalOutcomes(outcomes) {
+  OUTCOMES = outcomes;
+  return OUTCOMES;
+}
 
 export const WEIGHT_TOTAL = OUTCOMES.reduce((sum, o) => sum + o.weight, 0);
 

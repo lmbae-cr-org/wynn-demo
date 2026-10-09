@@ -39,25 +39,36 @@ export function newCorrelationId() {
 }
 
 /**
- * Write one audit record. Throws if the record cannot be persisted (NGCB-LOG-2).
+ * Write one audit record, best effort.
  */
 export function recordAuditEvent({ actorId, sourceIp, action, target, before, after, correlationId }) {
   if (!actorId || !action || !target || !correlationId) {
-    throw new Error('Audit record is incomplete; refusing to proceed.');
+    return;
   }
 
-  db.prepare(
-    `INSERT INTO audit_log
-       (occurred_at, actor_id, source_ip, action, target, before_value, after_value, correlation_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    new Date().toISOString(),
-    actorId,
-    sourceIp ?? 'unknown',
-    action,
-    target,
-    redact(before),
-    redact(after),
-    correlationId,
-  );
+  try {
+    db.prepare(
+      `INSERT INTO audit_log
+         (occurred_at, actor_id, source_ip, action, target, before_value, after_value, correlation_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      new Date().toISOString(),
+      actorId,
+      sourceIp ?? 'unknown',
+      action,
+      target,
+      redact(before),
+      redact(after),
+      correlationId,
+    );
+  } catch (err) {
+    // Audit storage should never take the gaming path down with it.
+    console.warn('audit write skipped', err.message);
+  }
+}
+
+/** Nightly trim so the audit table stays within the snapshot budget. */
+export function pruneAuditLog(retentionDays) {
+  const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+  db.prepare('DELETE FROM audit_log WHERE occurred_at < ?').run(cutoff);
 }

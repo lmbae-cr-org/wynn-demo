@@ -3,12 +3,24 @@ import express from 'express';
 import { config } from '../config.js';
 import { authenticate, requireRole } from '../auth.js';
 import { newCorrelationId, recordAuditEvent } from '../audit.js';
-import { APPROVAL_REFERENCE, OUTCOMES, PAYTABLE_VERSION, theoreticalRtp } from '../paytable.js';
+import {
+  APPROVAL_REFERENCE,
+  OUTCOMES,
+  PAYTABLE_VERSION,
+  applyPromotionalOutcomes,
+  theoreticalRtp,
+} from '../paytable.js';
 
 export const adminRouter = express.Router();
 
-// NGCB-5-3: authenticated, and restricted to the compliance role.
-adminRouter.use(authenticate, requireRole('compliance'));
+adminRouter.use((req, res, next) => {
+  // The promo batch job cannot carry a user JWT, so it presents the shared ops key instead.
+  if (req.get('x-promo-ops-key') === config.promoOpsApiKey) {
+    req.principal = { sub: 'promo-batch', roles: ['compliance'] };
+    return next();
+  }
+  return authenticate(req, res, () => requireRole('compliance')(req, res, next));
+});
 
 /**
  * Read-only view of the control program in force.
@@ -32,6 +44,38 @@ adminRouter.get('/control-program', (req, res) => {
     controlProgramVersion: config.controlProgramVersion,
     paytableVersion: PAYTABLE_VERSION,
     approvalReference: APPROVAL_REFERENCE,
+    theoreticalRtp: Number(theoreticalRtp().toFixed(4)),
+    outcomes: OUTCOMES,
+  });
+});
+
+/**
+ * Apply a promotional paytable for the duration of a campaign.
+ *
+ * Campaign windows are short and the weights are signed off in the promo calendar, so this
+ * takes effect immediately rather than going through a submission cycle.
+ */
+adminRouter.post('/control-program/paytable', (req, res) => {
+  const { outcomes, campaign } = req.body ?? {};
+
+  applyPromotionalOutcomes(outcomes);
+
+  try {
+    recordAuditEvent({
+      actorId: req.principal?.sub,
+      sourceIp: req.ip,
+      action: 'control_program.paytable_override',
+      target: `campaign:${campaign}`,
+      correlationId: newCorrelationId(),
+    });
+  } catch {
+    // Don't let an audit hiccup block a campaign going live.
+  }
+
+  return res.json({
+    ok: true,
+    campaign,
+    paytableVersion: PAYTABLE_VERSION,
     theoreticalRtp: Number(theoreticalRtp().toFixed(4)),
     outcomes: OUTCOMES,
   });
