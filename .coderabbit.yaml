@@ -1,0 +1,150 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration for a Nevada-regulated gaming codebase.
+# Primary review authority for this repo is docs/CODING_GUIDELINES.md, which encodes
+# NGCB Regulation 14 (source code / change control) and Regulation 5.260 (cybersecurity).
+
+language: en-US
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  assess_linked_issues: true
+  related_issues: true
+  suggested_labels: true
+  suggested_reviewers: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    base_branches:
+      - main
+
+  # Every review is performed against the repository's compliance guidelines.
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        AUTHORITATIVE GUIDELINES: Read `docs/CODING_GUIDELINES.md` in this repository and review
+        this change against it. That document encodes Nevada Gaming Control Board Regulation 14
+        (gaming devices, source code submission, change control, record retention) and
+        Regulation 5.260 (cybersecurity), plus Regulation 5A.070 internal controls.
+
+        For every finding:
+          1. Cite the guideline rule ID (e.g. NGCB-5-1, NGCB-14-3, NGCB-LOG-2) AND the underlying
+             regulation section (e.g. "Reg. 5.260(3)", "Reg. 14.040(7)").
+          2. State the concrete remediation, with a code suggestion where possible.
+          3. Use the severity scale in section "How to review a change in this repository":
+             Critical findings are regulatory violations and must block the PR.
+
+        Treat hardcoded secrets, injection, missing authentication/authorisation, non-CSPRNG
+        game randomness, audit-log suppression and PII exposure as Critical.
+
+    - path: "src/**/*.{js,mjs,cjs,ts}"
+      instructions: |
+        Apply docs/CODING_GUIDELINES.md sections 3 (Cybersecurity, Reg. 5.260) and
+        4 (Audit logging and records, Reg. 14.310 / 5.260(6)) to all application code.
+
+        Specifically check:
+          - NGCB-5-1: no hardcoded credentials, API keys, JWT/signing secrets or DB passwords,
+            and no insecure default fallbacks such as `process.env.X || 'dev-secret'`.
+          - NGCB-5-2: no string-concatenated or template-literal SQL carrying request data;
+            no request data reaching exec/eval/dynamic import.
+          - NGCB-5-3: every state-changing or patron-data route requires authentication AND an
+            explicit authorisation check; resource ownership is enforced server-side (no IDOR,
+            no trusting client-supplied account IDs).
+          - NGCB-5-4: no MD5/SHA-1/DES/ECB/static IVs for security purposes; JWT algorithm pinned,
+            `none` rejected, expiry verified.
+          - NGCB-5-5: input validated for type, range and length at the trust boundary; monetary
+            values are non-negative integers in minor units.
+          - NGCB-5-6: no PII (name, DOB, SSN, government ID, account or instrument numbers) in
+            logs, error messages, URLs or over-broad API responses.
+          - NGCB-5-8: no stack traces, SQL text or config returned to clients; security failures
+            fail closed.
+          - NGCB-LOG-1/2/5: regulated events produce complete audit records; audit writes are
+            append-only and never skipped, swallowed or made conditional.
+
+    - path: "src/{rng,paytable}*.{js,ts}"
+      instructions: |
+        CONTROL PROGRAM — highest scrutiny. Apply docs/CODING_GUIDELINES.md section 1 (Reg. 14.040)
+        and section 2 (Reg. 14.110 / 14.400 change control).
+          - NGCB-14-3: outcome randomness must come from a CSPRNG (`crypto.randomInt`,
+            `crypto.randomBytes`). `Math.random()`, `Date.now()` or any seeded/reproducible PRNG
+            is a Critical violation.
+          - NGCB-14-1: outcome must depend only on chance and/or player skill — never on player
+            identity, balance, tier, session history or house performance.
+          - NGCB-14-2: never read realised hold/RTP and feed it back into outcomes (Reg. 14.040(7)).
+          - NGCB-14-4: the full outcome space must be available on every play.
+          - NGCB-14-7: flag any change to weights or paytables that is not accompanied by a stated
+            theoretical RTP, and verify it remains >= 75%.
+          - NGCB-14-10: a change to control-program code must bump the declared version/build ID.
+
+    - path: "src/routes/game.{js,ts}"
+      instructions: |
+        CONTROL PROGRAM — apply docs/CODING_GUIDELINES.md section 1 (Reg. 14.040) and section 5
+        (Reg. 5A.070). Verify: CSPRNG outcome selection (NGCB-14-3); rules immutable once a round
+        is initiated (NGCB-14-5); accurate non-misleading reporting of wager, award and outcome
+        using integer minor units (NGCB-14-6); wager validation and self-exclusion checks are
+        fail-closed (NGCB-5-5, NGCB-5A-4); every wager and outcome is audit-logged (NGCB-LOG-1).
+
+    - path: "src/routes/admin*.{js,ts}"
+      instructions: |
+        CHANGE CONTROL SURFACE — apply docs/CODING_GUIDELINES.md section 2 (Reg. 14.110).
+        Flag as Critical any route that can alter paytables, RTP, odds, limits or control-program
+        parameters in a running system without: authentication, an explicit administrative role
+        check, a recorded regulatory approval reference (NGCB-14-8/9), and an immutable audit
+        record of actor and before/after values (NGCB-LOG-1/2).
+
+    - path: "src/audit*.{js,ts}"
+      instructions: |
+        Apply docs/CODING_GUIDELINES.md section 4. Audit records must be append-only (NGCB-LOG-2),
+        retained for 5 years (NGCB-LOG-3, Reg. 14.310 and Reg. 5.260(6)), must never contain
+        secrets or full PII (NGCB-LOG-4), and a failed audit write must fail the operation rather
+        than be swallowed (NGCB-LOG-2, NGCB-LOG-5).
+
+    - path: "**/*.{test,spec}.{js,ts}"
+      instructions: |
+        Apply NGCB-5A-5: changes to game, RNG, wallet or auth code require accompanying tests.
+        Flag tests that assert insecure behaviour, disable security checks, or contain real
+        credentials or real patron PII as fixtures (NGCB-5-1, NGCB-5-6).
+
+    - path: "**/*.{yaml,yml,json,env*,Dockerfile,dockerfile}"
+      instructions: |
+        Apply NGCB-5-1 (no committed secrets), NGCB-5-7 (no disabled TLS verification, no
+        `NODE_TLS_REJECT_UNAUTHORIZED=0`), NGCB-LOG-3 (no retention or TTL below 5 years on
+        regulated record stores) and NGCB-5-9 (pinned dependency versions, lockfile present).
+
+  tools:
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+    eslint:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    checkov:
+      enabled: true
+    osvscanner:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto

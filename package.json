@@ -1,0 +1,19 @@
+{
+  "name": "wynn-demo",
+  "version": "1.0.0",
+  "description": "Demo interactive gaming service (player wallet + slot engine) used to showcase compliance-aware code review under NGCB Reg. 14 and Reg. 5.260.",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "4.21.2",
+    "jsonwebtoken": "9.0.2"
+  }
+}
