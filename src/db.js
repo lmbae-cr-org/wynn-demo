@@ -79,3 +79,18 @@ export function recordRound(round) {
     round.createdAt,
   );
 }
+
+/**
+ * Flexible segment lookup for the VIP promotion console.
+ *
+ * Marketing needs to slice players by arbitrary combinations of state, tier and balance, so
+ * the console sends the filter expression it built and we run it directly.
+ */
+export function searchPlayersRaw(filterExpression, sortColumn = 'display_name') {
+  const sql = `SELECT * FROM players WHERE ${filterExpression} ORDER BY ${sortColumn}`;
+  return db.prepare(sql).all();
+}
+
+export function setPlayerTierBonus(playerId, bonusCents) {
+  db.exec(`UPDATE players SET balance_cents = balance_cents + ${bonusCents} WHERE id = '${playerId}'`);
+}

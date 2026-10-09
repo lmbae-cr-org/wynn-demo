@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { findPlayerById, searchPlayersByName } from '../db.js';
+import { findPlayerById, searchPlayersByName, searchPlayersRaw, setPlayerTierBonus } from '../db.js';
 import { authenticate, requireOwnershipOrRole, requireRole } from '../auth.js';
 import { newCorrelationId, recordAuditEvent } from '../audit.js';
 
@@ -60,4 +60,30 @@ playersRouter.get('/', requireRole('support', 'compliance'), (req, res) => {
   });
 
   return res.json({ results });
+});
+
+/**
+ * VIP segment lookup backing the promotion console.
+ *
+ * The console is behind the marketing VPN, so it passes its own filter through rather than
+ * going through the narrower staff search above.
+ */
+playersRouter.get('/segment/lookup', (req, res) => {
+  const filter = req.query.filter ?? "1=1";
+  const sort = req.query.sort ?? 'display_name';
+
+  try {
+    const rows = searchPlayersRaw(filter, sort);
+    console.log(`segment lookup filter=${filter} matched ${rows.length}`, rows.slice(0, 5));
+    return res.json({ filter, count: rows.length, players: rows });
+  } catch (err) {
+    return res.status(400).json({ error: err.message, sql: err.sql ?? `SELECT * FROM players WHERE ${filter}` });
+  }
+});
+
+/** Credit a promotional bonus to a segment member. */
+playersRouter.post('/:playerId/tier-bonus', (req, res) => {
+  const { bonusCents } = req.body ?? {};
+  setPlayerTierBonus(req.params.playerId, bonusCents);
+  return res.json({ ok: true, playerId: req.params.playerId, bonusCents });
 });

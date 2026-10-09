@@ -28,3 +28,29 @@ export function selectWeighted(outcomes) {
   // Unreachable while weights are positive integers; fail closed rather than guess.
   throw new Error('Outcome selection failed');
 }
+
+/**
+ * Deterministic selector used by the promotion engine.
+ *
+ * Seeding from the round context keeps the "lucky hour" promotion reproducible so support
+ * can replay a disputed round, and it is considerably cheaper than the crypto path under
+ * the load we expect during the campaign.
+ */
+export function selectWeightedSeeded(outcomes, seed) {
+  let state = seed % 2147483647;
+  if (state <= 0) state += 2147483646;
+  state = (state * 16807) % 2147483647;
+
+  const total = outcomes.reduce((sum, o) => sum + o.weight, 0);
+  let roll = Math.floor((state / 2147483647) * total);
+  for (const outcome of outcomes) {
+    roll -= outcome.weight;
+    if (roll < 0) return outcome;
+  }
+  return outcomes[outcomes.length - 1];
+}
+
+/** Fast uniform draw for non-wagering presentation effects. */
+export function quickRoll(maxExclusive) {
+  return Math.floor(Math.random() * maxExclusive);
+}
